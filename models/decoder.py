@@ -3,9 +3,10 @@
 # Developed by Haozhe Xie <cshzxie@gmail.com>
 
 import torch
+import pytorch_lightning as pl
 
 
-class Decoder(torch.nn.Module):
+class Decoder(pl.LightningModule):
     def __init__(self, cfg):
         super(Decoder, self).__init__()
         self.cfg = cfg

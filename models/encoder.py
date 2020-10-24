@@ -7,9 +7,10 @@
 
 import torch
 import torchvision.models
+import pytorch_lightning as pl
 
 
-class Encoder(torch.nn.Module):
+class Encoder(pl.LightningModule):
     def __init__(self, cfg):
         super(Encoder, self).__init__()
         self.cfg = cfg

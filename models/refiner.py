@@ -3,9 +3,10 @@
 # Developed by Haozhe Xie <cshzxie@gmail.com>
 
 import torch
+import pytorch_lightning as pl
 
 
-class Refiner(torch.nn.Module):
+class Refiner(pl.LightningModule):
     def __init__(self, cfg):
         super(Refiner, self).__init__()
         self.cfg = cfg

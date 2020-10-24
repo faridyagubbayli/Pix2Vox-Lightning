@@ -3,9 +3,9 @@
 # Developed by Haozhe Xie <cshzxie@gmail.com>
 
 import torch
+import pytorch_lightning as pl
 
-
-class Merger(torch.nn.Module):
+class Merger(pl.LightningModule):
     def __init__(self, cfg):
         super(Merger, self).__init__()
         self.cfg = cfg

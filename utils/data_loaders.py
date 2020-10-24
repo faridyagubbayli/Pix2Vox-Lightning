@@ -17,12 +17,107 @@ from enum import Enum, unique
 
 import utils.binvox_rw
 
+import pytorch_lightning as pl
+
 
 @unique
 class DatasetType(Enum):
     TRAIN = 0
     TEST = 1
     VAL = 2
+    
+
+class ShapeNetDataModule(pl.LightningDataModule):
+    
+    def __init__(self, cfg):
+        super().__init__()
+        self.cfg = cfg
+
+    def setup(self, stage=None):
+        pass
+
+    def train_dataloader(self):
+        cfg = self.cfg
+        # Set up data augmentation
+        IMG_SIZE = cfg.CONST.IMG_H, cfg.CONST.IMG_W
+        CROP_SIZE = cfg.CONST.CROP_IMG_H, cfg.CONST.CROP_IMG_W
+        train_transforms = utils.data_transforms.Compose([
+            utils.data_transforms.RandomCrop(IMG_SIZE, CROP_SIZE),
+            utils.data_transforms.RandomBackground(
+                cfg.TRAIN.RANDOM_BG_COLOR_RANGE),
+            utils.data_transforms.ColorJitter(
+                cfg.TRAIN.BRIGHTNESS, cfg.TRAIN.CONTRAST, cfg.TRAIN.SATURATION),
+            utils.data_transforms.RandomNoise(cfg.TRAIN.NOISE_STD),
+            utils.data_transforms.Normalize(
+                mean=cfg.DATASET.MEAN, std=cfg.DATASET.STD),
+            utils.data_transforms.RandomFlip(),
+            utils.data_transforms.RandomPermuteRGB(),
+            utils.data_transforms.ToTensor(),
+        ])
+    
+        train_dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[cfg.DATASET.TRAIN_DATASET](cfg)
+        train_data_loader = torch.utils.data.DataLoader(dataset=train_dataset_loader.get_dataset(
+            utils.data_loaders.DatasetType.TRAIN, cfg.CONST.N_VIEWS_RENDERING, train_transforms),
+            batch_size=cfg.CONST.BATCH_SIZE,
+            num_workers=cfg.TRAIN.NUM_WORKER,
+            pin_memory=True,
+            shuffle=True,
+            drop_last=True)
+        return train_data_loader
+    
+    def val_dataloader(self):
+        cfg = self.cfg
+        # Set up data augmentation
+        IMG_SIZE = cfg.CONST.IMG_H, cfg.CONST.IMG_W
+        CROP_SIZE = cfg.CONST.CROP_IMG_H, cfg.CONST.CROP_IMG_W
+        
+        val_dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[cfg.DATASET.TEST_DATASET](
+            cfg)
+
+        
+        val_transforms = utils.data_transforms.Compose([
+            utils.data_transforms.CenterCrop(IMG_SIZE, CROP_SIZE),
+            utils.data_transforms.RandomBackground(
+                cfg.TEST.RANDOM_BG_COLOR_RANGE),
+            utils.data_transforms.Normalize(
+                mean=cfg.DATASET.MEAN, std=cfg.DATASET.STD),
+            utils.data_transforms.ToTensor(),
+        ])
+        
+        val_data_loader = torch.utils.data.DataLoader(dataset=val_dataset_loader.get_dataset(
+            utils.data_loaders.DatasetType.VAL, cfg.CONST.N_VIEWS_RENDERING, val_transforms),
+            batch_size=1,
+            num_workers=0,
+            pin_memory=True,
+            shuffle=False)
+        
+        return val_data_loader
+
+    def test_dataloader(self):
+        cfg = self.cfg
+        
+        # Set up data augmentation
+        IMG_SIZE = cfg.CONST.IMG_H, cfg.CONST.IMG_W
+        CROP_SIZE = cfg.CONST.CROP_IMG_H, cfg.CONST.CROP_IMG_W
+        test_transforms = utils.data_transforms.Compose([
+            utils.data_transforms.CenterCrop(IMG_SIZE, CROP_SIZE),
+            utils.data_transforms.RandomBackground(
+                cfg.TEST.RANDOM_BG_COLOR_RANGE),
+            utils.data_transforms.Normalize(
+                mean=cfg.DATASET.MEAN, std=cfg.DATASET.STD),
+            utils.data_transforms.ToTensor(),
+        ])
+
+        dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[cfg.DATASET.TEST_DATASET](
+            cfg)
+        test_data_loader = torch.utils.data.DataLoader(dataset=dataset_loader.get_dataset(
+            utils.data_loaders.DatasetType.TEST, cfg.CONST.N_VIEWS_RENDERING, test_transforms),
+            batch_size=1,
+            num_workers=1,
+            pin_memory=True,
+            shuffle=False)
+        
+        return test_data_loader
 
 
 # //////////////////////////////// = End of DatasetType Class Definition = ///////////////////////////////// #
