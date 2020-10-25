@@ -21,6 +21,13 @@ from omegaconf import DictConfig, OmegaConf
 matplotlib.use('Agg')
 
 
+def save_cfg(cfg, dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    path = os.path.join(dir, 'config.yaml')
+    OmegaConf.save(cfg, path)
+
+
 def main():
     cfg = OmegaConf.load('conf/config.yaml')
 
@@ -33,6 +40,7 @@ def main():
         data_module = ShapeNetDataModule(cfg.data)
 
         logger = pl.loggers.TensorBoardLogger("tb_logs", name="pix2vox")
+        save_cfg(cfg, logger.log_dir)
 
         trainer = pl.Trainer(automatic_optimization=False, log_every_n_steps=1, logger=logger, **cfg.trainer)
         trainer.fit(model, data_module)
