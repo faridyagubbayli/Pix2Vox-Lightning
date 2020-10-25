@@ -4,36 +4,36 @@
 
 import torch
 import pytorch_lightning as pl
+from omegaconf import DictConfig
 
 
 class Decoder(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, cfg_network: DictConfig):
         super(Decoder, self).__init__()
-        self.cfg = cfg
 
         # Layer Definition
         self.layer1 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(2048, 512, kernel_size=4, stride=2, bias=cfg.NETWORK.TCONV_USE_BIAS, padding=1),
+            torch.nn.ConvTranspose3d(2048, 512, kernel_size=4, stride=2, bias=cfg_network.tconv_use_bias, padding=1),
             torch.nn.BatchNorm3d(512),
             torch.nn.ReLU()
         )
         self.layer2 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(512, 128, kernel_size=4, stride=2, bias=cfg.NETWORK.TCONV_USE_BIAS, padding=1),
+            torch.nn.ConvTranspose3d(512, 128, kernel_size=4, stride=2, bias=cfg_network.tconv_use_bias, padding=1),
             torch.nn.BatchNorm3d(128),
             torch.nn.ReLU()
         )
         self.layer3 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(128, 32, kernel_size=4, stride=2, bias=cfg.NETWORK.TCONV_USE_BIAS, padding=1),
+            torch.nn.ConvTranspose3d(128, 32, kernel_size=4, stride=2, bias=cfg_network.tconv_use_bias, padding=1),
             torch.nn.BatchNorm3d(32),
             torch.nn.ReLU()
         )
         self.layer4 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(32, 8, kernel_size=4, stride=2, bias=cfg.NETWORK.TCONV_USE_BIAS, padding=1),
+            torch.nn.ConvTranspose3d(32, 8, kernel_size=4, stride=2, bias=cfg_network.tconv_use_bias, padding=1),
             torch.nn.BatchNorm3d(8),
             torch.nn.ReLU()
         )
         self.layer5 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(8, 1, kernel_size=1, bias=cfg.NETWORK.TCONV_USE_BIAS),
+            torch.nn.ConvTranspose3d(8, 1, kernel_size=1, bias=cfg_network.tconv_use_bias),
             torch.nn.Sigmoid()
         )
 

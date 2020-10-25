@@ -1,3 +1,4 @@
+omegaconf
 argparse
 easydict
 matplotlib

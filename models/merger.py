@@ -4,37 +4,38 @@
 
 import torch
 import pytorch_lightning as pl
+from omegaconf import DictConfig
+
 
 class Merger(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, cfg_network: DictConfig):
         super(Merger, self).__init__()
-        self.cfg = cfg
 
         # Layer Definition
         self.layer1 = torch.nn.Sequential(
             torch.nn.Conv3d(9, 16, kernel_size=3, padding=1),
             torch.nn.BatchNorm3d(16),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE)
+            torch.nn.LeakyReLU(cfg_network.leaky_value)
         )
         self.layer2 = torch.nn.Sequential(
             torch.nn.Conv3d(16, 8, kernel_size=3, padding=1),
             torch.nn.BatchNorm3d(8),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE)
+            torch.nn.LeakyReLU(cfg_network.leaky_value)
         )
         self.layer3 = torch.nn.Sequential(
             torch.nn.Conv3d(8, 4, kernel_size=3, padding=1),
             torch.nn.BatchNorm3d(4),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE)
+            torch.nn.LeakyReLU(cfg_network.leaky_value)
         )
         self.layer4 = torch.nn.Sequential(
             torch.nn.Conv3d(4, 2, kernel_size=3, padding=1),
             torch.nn.BatchNorm3d(2),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE)
+            torch.nn.LeakyReLU(cfg_network.leaky_value)
         )
         self.layer5 = torch.nn.Sequential(
             torch.nn.Conv3d(2, 1, kernel_size=3, padding=1),
             torch.nn.BatchNorm3d(1),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE)
+            torch.nn.LeakyReLU(cfg_network.leaky_value)
         )
 
     def forward(self, raw_features, coarse_volumes):

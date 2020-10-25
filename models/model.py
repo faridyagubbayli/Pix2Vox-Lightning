@@ -1,3 +1,5 @@
+from argparse import ArgumentParser
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,6 +7,7 @@ import torch.optim as optim
 import pytorch_lightning as pl
 
 import torch.utils.data
+from omegaconf import DictConfig
 
 import utils.binvox_visualization
 import utils.data_loaders
@@ -17,31 +20,24 @@ from models.refiner import Refiner
 from models.merger import Merger
 
 from datetime import datetime as dt
-from tensorboardX import SummaryWriter
-from time import time
 import json
 
 
 class Model(pl.LightningModule):
 
-
-    def __init__(self, cfg):
+    def __init__(self, cfg_network: DictConfig, cfg_tester: DictConfig):
         super().__init__()
-        self.cfg = cfg
-        
+        self.cfg_network = cfg_network
+        self.cfg_tester = cfg_tester
+
         # Enable the inbuilt cudnn auto-tuner to find the best algorithm to use
         torch.backends.cudnn.benchmark = True
 
         # Set up networks
-        self.encoder = Encoder(cfg)
-        self.decoder = Decoder(cfg)
-        self.refiner = Refiner(cfg)
-        self.merger = Merger(cfg)
-        print('[DEBUG] %s Parameters in Encoder: %d.' % (dt.now(), utils.network_utils.count_parameters(self.encoder)))
-        print('[DEBUG] %s Parameters in Decoder: %d.' % (dt.now(), utils.network_utils.count_parameters(self.decoder)))
-        print('[DEBUG] %s Parameters in Refiner: %d.' % (dt.now(), utils.network_utils.count_parameters(self.refiner)))
-        print('[DEBUG] %s Parameters in Merger: %d.' % (dt.now(), utils.network_utils.count_parameters(self.merger)))
-        
+        self.encoder = Encoder(cfg_network)
+        self.decoder = Decoder(cfg_network)
+        self.refiner = Refiner(cfg_network)
+        self.merger = Merger(cfg_network)
         
         # Initialize weights of networks
         self.encoder.apply(utils.network_utils.init_weights)
@@ -50,91 +46,87 @@ class Model(pl.LightningModule):
         self.merger.apply(utils.network_utils.init_weights)
         
         self.bce_loss = nn.BCELoss()
-        
-        
+
     def configure_optimizers(self):
-        cfg = self.cfg
+        params = self.cfg_network.optimization
         # Set up solver
-        if cfg.TRAIN.POLICY == 'adam':
-            encoder_solver = torch.optim.Adam(filter(lambda p: p.requires_grad, self.encoder.parameters()),
-                                            lr=cfg.TRAIN.ENCODER_LEARNING_RATE,
-                                            betas=cfg.TRAIN.BETAS)
-            decoder_solver = torch.optim.Adam(self.decoder.parameters(),
-                                            lr=cfg.TRAIN.DECODER_LEARNING_RATE,
-                                            betas=cfg.TRAIN.BETAS)
-            refiner_solver = torch.optim.Adam(self.refiner.parameters(),
-                                            lr=cfg.TRAIN.REFINER_LEARNING_RATE,
-                                            betas=cfg.TRAIN.BETAS)
-            merger_solver = torch.optim.Adam(self.merger.parameters(), 
-                                             lr=cfg.TRAIN.MERGER_LEARNING_RATE, 
-                                             betas=cfg.TRAIN.BETAS)
-        elif cfg.TRAIN.POLICY == 'sgd':
-            encoder_solver = torch.optim.SGD(filter(lambda p: p.requires_grad, self.encoder.parameters()),
-                                            lr=cfg.TRAIN.ENCODER_LEARNING_RATE,
-                                            momentum=cfg.TRAIN.MOMENTUM)
-            decoder_solver = torch.optim.SGD(self.decoder.parameters(),
-                                            lr=cfg.TRAIN.DECODER_LEARNING_RATE,
-                                            momentum=cfg.TRAIN.MOMENTUM)
-            refiner_solver = torch.optim.SGD(self.refiner.parameters(),
-                                            lr=cfg.TRAIN.REFINER_LEARNING_RATE,
-                                            momentum=cfg.TRAIN.MOMENTUM)
-            merger_solver = torch.optim.SGD(self.merger.parameters(),
-                                            lr=cfg.TRAIN.MERGER_LEARNING_RATE,
-                                            momentum=cfg.TRAIN.MOMENTUM)
+        if params.policy == 'adam':
+            encoder_solver = optim.Adam(filter(lambda p: p.requires_grad, self.encoder.parameters()),
+                                            lr=params.encoder_lr,
+                                            betas=params.betas)
+            decoder_solver = optim.Adam(self.decoder.parameters(),
+                                            lr=params.decoder_lr,
+                                            betas=params.betas)
+            refiner_solver = optim.Adam(self.refiner.parameters(),
+                                            lr=params.refiner_lr,
+                                            betas=params.betas)
+            merger_solver = optim.Adam(self.merger.parameters(),
+                                             lr=params.merger_lr,
+                                             betas=params.betas)
+        elif params.policy == 'sgd':
+            encoder_solver = optim.SGD(filter(lambda p: p.requires_grad, self.encoder.parameters()),
+                                            lr=params.encoder_lr,
+                                            momentum=params.momentum)
+            decoder_solver = optim.SGD(self.decoder.parameters(),
+                                            lr=params.decoder_lr,
+                                            momentum=params.momentum)
+            refiner_solver = optim.SGD(self.refiner.parameters(),
+                                            lr=params.refiner_lr,
+                                            momentum=params.momentum)
+            merger_solver = optim.SGD(self.merger.parameters(),
+                                            lr=params.merger_lr,
+                                            momentum=params.momentum)
         else:
-            raise Exception('[FATAL] %s Unknown optimizer %s.' %
-                            (dt.now(), cfg.TRAIN.POLICY))
+            raise Exception('[FATAL] %s Unknown optimizer %s.' % (dt.now(), params.policy))
             
             # Set up learning rate scheduler to decay learning rates dynamically
-        encoder_lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(encoder_solver,
-                                                                    milestones=cfg.TRAIN.ENCODER_LR_MILESTONES,
-                                                                    gamma=cfg.TRAIN.GAMMA)
-        decoder_lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(decoder_solver,
-                                                                    milestones=cfg.TRAIN.DECODER_LR_MILESTONES,
-                                                                    gamma=cfg.TRAIN.GAMMA)
-        refiner_lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(refiner_solver,
-                                                                    milestones=cfg.TRAIN.REFINER_LR_MILESTONES,
-                                                                    gamma=cfg.TRAIN.GAMMA)
-        merger_lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(merger_solver,
-                                                                milestones=cfg.TRAIN.MERGER_LR_MILESTONES,
-                                                                gamma=cfg.TRAIN.GAMMA)
+        encoder_lr_scheduler = optim.lr_scheduler.MultiStepLR(encoder_solver,
+                                                                    milestones=params.encoder_lr_milestones,
+                                                                    gamma=params.gamma)
+        decoder_lr_scheduler = optim.lr_scheduler.MultiStepLR(decoder_solver,
+                                                                    milestones=params.decoder_lr_milestones,
+                                                                    gamma=params.gamma)
+        refiner_lr_scheduler = optim.lr_scheduler.MultiStepLR(refiner_solver,
+                                                                    milestones=params.refiner_lr_milestones,
+                                                                    gamma=params.gamma)
+        merger_lr_scheduler = optim.lr_scheduler.MultiStepLR(merger_solver,
+                                                                milestones=params.merger_lr_milestones,
+                                                                gamma=params.gamma)
         
-        return [encoder_solver, decoder_solver, refiner_solver, merger_solver], [encoder_lr_scheduler, decoder_lr_scheduler, refiner_lr_scheduler, merger_lr_scheduler]
+        return [encoder_solver, decoder_solver, refiner_solver, merger_solver], \
+               [encoder_lr_scheduler, decoder_lr_scheduler, refiner_lr_scheduler, merger_lr_scheduler]
     
-    def fwd(self, batch):
-        cfg = self.cfg
+    def _fwd(self, batch):
         taxonomy_names, sample_names, rendering_images, ground_truth_volumes = batch
 
         image_features = self.encoder(rendering_images)
         raw_features, generated_volumes = self.decoder(image_features)
 
-        if cfg.NETWORK.USE_MERGER and self.current_epoch >= cfg.TRAIN.EPOCH_START_USE_MERGER:
+        if self.cfg_network.use_merger and self.current_epoch >= self.cfg_network.optimization.epoch_start_use_merger:
             generated_volumes = self.merger(raw_features, generated_volumes)
         else:
             generated_volumes = torch.mean(generated_volumes, dim=1)
         encoder_loss = self.bce_loss(generated_volumes, ground_truth_volumes) * 10
         
-        if cfg.NETWORK.USE_REFINER and self.current_epoch >= cfg.TRAIN.EPOCH_START_USE_REFINER:
+        if self.cfg_network.use_refiner and self.current_epoch >= self.cfg_network.optimization.epoch_start_use_refiner:
             generated_volumes = self.refiner(generated_volumes)
             refiner_loss = self.bce_loss(generated_volumes, ground_truth_volumes) * 10
         else:
             refiner_loss = encoder_loss
         
         return generated_volumes, encoder_loss, refiner_loss
-    
-    
+
     def training_step(self, batch, batch_idx, optimizer_idx):
-        cfg = self.cfg
         (opt_enc, opt_dec, opt_ref, opt_merg) = self.optimizers()
         
-        generated_volumes, encoder_loss, refiner_loss = self.fwd(batch)
+        generated_volumes, encoder_loss, refiner_loss = self._fwd(batch)
         
         self.log('loss/EncoderDecoder', encoder_loss, 
                  prog_bar=True, logger=True, on_step=True, on_epoch=True)
         self.log('loss/Refiner', refiner_loss, 
                  prog_bar=True, logger=True, on_step=True, on_epoch=True)
-        
-        if cfg.NETWORK.USE_REFINER and self.current_epoch >= cfg.TRAIN.EPOCH_START_USE_REFINER:
+
+        if self.cfg_network.use_refiner and self.current_epoch >= self.cfg_network.optimization.epoch_start_use_refiner:
             self.manual_backward(encoder_loss, opt_enc, retain_graph=True)
             self.manual_backward(refiner_loss, opt_ref)
         else:
@@ -144,14 +136,20 @@ class Model(pl.LightningModule):
             opt.step()
             opt.zero_grad()
 
+    def training_epoch_end(self, outputs) -> None:
+        # Update Rendering Views
+        if self.cfg_network.update_n_views_rendering:
+            n_views_rendering = self.trainer.datamodule.update_n_views_rendering()
+            print('[INFO] %s Epoch [%d/%d] Update #RenderingViews to %d' %
+                  (dt.now(), self.current_epoch + 2, self.trainer.max_epochs, n_views_rendering))
+
     def _eval_step(self, batch, batch_idx):
         # SUPPORTS ONLY BATCH_SIZE=1
-        cfg = self.cfg
         taxonomy_names, sample_names, rendering_images, ground_truth_volumes = batch
         taxonomy_id = taxonomy_names[0]
         sample_name = sample_names[0]
 
-        generated_volumes, encoder_loss, refiner_loss = self.fwd(batch)
+        generated_volumes, encoder_loss, refiner_loss = self._fwd(batch)
 
         self.log('val_loss/EncoderDecoder', encoder_loss, prog_bar=True,
                  logger=True, on_step=True, on_epoch=True)
@@ -161,7 +159,7 @@ class Model(pl.LightningModule):
 
         # IoU per sample
         sample_iou = []
-        for th in cfg.TEST.VOXEL_THRESH:
+        for th in self.cfg_tester.voxel_thresh:
             _volume = torch.ge(generated_volumes, th).float()
             intersection = torch.sum(_volume.mul(ground_truth_volumes)).float()
             union = torch.sum(
@@ -181,11 +179,10 @@ class Model(pl.LightningModule):
         }
         
     def _eval_epoch_end(self, outputs):
-        cfg = self.cfg
-
         # Load taxonomies of dataset
         taxonomies = []
-        with open(cfg.DATASETS[cfg.DATASET.TEST_DATASET.upper()].TAXONOMY_FILE_PATH, encoding='utf-8') as file:
+        taxonomy_path = self.trainer.datamodule.get_test_taxonomy_file_path()
+        with open(taxonomy_path, encoding='utf-8') as file:
             taxonomies = json.loads(file.read())
         taxonomies = {t['taxonomy_id']: t for t in taxonomies}
 
@@ -213,7 +210,7 @@ class Model(pl.LightningModule):
         print('Taxonomy', end='\t')
         print('#Sample', end='\t')
         print(' Baseline', end='\t')
-        for th in cfg.TEST.VOXEL_THRESH:
+        for th in self.cfg_tester.voxel_thresh:
             print('t=%.2f' % th, end='\t')
         print()
         # Print body
@@ -222,8 +219,9 @@ class Model(pl.LightningModule):
                   ['taxonomy_name'].ljust(8), end='\t')
             print('%d' % test_iou[taxonomy_id]['n_samples'], end='\t')
             if 'baseline' in taxonomies[taxonomy_id]:
+                n_views_rendering = self.trainer.datamodule.get_n_views_rendering()
                 print('%.4f' % taxonomies[taxonomy_id]['baseline']
-                      ['%d-view' % cfg.CONST.N_VIEWS_RENDERING], end='\t\t')
+                      ['%d-view' % n_views_rendering], end='\t\t')
             else:
                 print('N/a', end='\t\t')
 

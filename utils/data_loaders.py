@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # Developed by Haozhe Xie <cshzxie@gmail.com>
+from argparse import ArgumentParser, Namespace
 
 import cv2
 import json
@@ -14,6 +15,8 @@ import torch.utils.data.dataset
 
 from datetime import datetime as dt
 from enum import Enum, unique
+
+from omegaconf import DictConfig
 
 import utils.binvox_rw
 
@@ -29,63 +32,67 @@ class DatasetType(Enum):
 
 class ShapeNetDataModule(pl.LightningDataModule):
     
-    def __init__(self, cfg):
+    def __init__(self, cfg_data: DictConfig):
         super().__init__()
-        self.cfg = cfg
+        self.cfg_data = cfg_data
+        self.train_data_loader = None
 
     def setup(self, stage=None):
         pass
 
     def train_dataloader(self):
-        cfg = self.cfg
+        const = self.cfg_data.constants
+        c_dt = self.cfg_data.transforms
+        c_dl = self.cfg_data.loader
+
         # Set up data augmentation
-        IMG_SIZE = cfg.CONST.IMG_H, cfg.CONST.IMG_W
-        CROP_SIZE = cfg.CONST.CROP_IMG_H, cfg.CONST.CROP_IMG_W
+        IMG_SIZE = const.img_h, const.img_w
+        CROP_SIZE = const.crop_img_h, const.crop_img_w
         train_transforms = utils.data_transforms.Compose([
             utils.data_transforms.RandomCrop(IMG_SIZE, CROP_SIZE),
-            utils.data_transforms.RandomBackground(
-                cfg.TRAIN.RANDOM_BG_COLOR_RANGE),
-            utils.data_transforms.ColorJitter(
-                cfg.TRAIN.BRIGHTNESS, cfg.TRAIN.CONTRAST, cfg.TRAIN.SATURATION),
-            utils.data_transforms.RandomNoise(cfg.TRAIN.NOISE_STD),
-            utils.data_transforms.Normalize(
-                mean=cfg.DATASET.MEAN, std=cfg.DATASET.STD),
+            utils.data_transforms.RandomBackground(c_dt.train_rand_bg_color_range),
+            utils.data_transforms.ColorJitter(c_dt.brightness, c_dt.contrast, c_dt.saturation),
+            utils.data_transforms.RandomNoise(c_dt.noise_std),
+            utils.data_transforms.Normalize(c_dt.mean, std=c_dt.std),
             utils.data_transforms.RandomFlip(),
             utils.data_transforms.RandomPermuteRGB(),
             utils.data_transforms.ToTensor(),
         ])
-    
-        train_dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[cfg.DATASET.TRAIN_DATASET](cfg)
-        train_data_loader = torch.utils.data.DataLoader(dataset=train_dataset_loader.get_dataset(
-            utils.data_loaders.DatasetType.TRAIN, cfg.CONST.N_VIEWS_RENDERING, train_transforms),
-            batch_size=cfg.CONST.BATCH_SIZE,
-            num_workers=cfg.TRAIN.NUM_WORKER,
-            pin_memory=True,
-            shuffle=True,
-            drop_last=True)
+
+        ds_config = self.cfg_data.dataset[c_dl.train_dataset]
+        train_dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[c_dl.train_dataset](ds_config)
+        train_data_loader = torch.utils.data.DataLoader(
+            dataset=train_dataset_loader.get_dataset(
+                utils.data_loaders.DatasetType.TRAIN, const.n_views_rendering, train_transforms),
+                batch_size=c_dl.batch_size,
+                num_workers=c_dl.num_workers,
+                pin_memory=True,
+                shuffle=True,
+                drop_last=True)
+        self.train_data_loader = train_data_loader
         return train_data_loader
     
     def val_dataloader(self):
-        cfg = self.cfg
-        # Set up data augmentation
-        IMG_SIZE = cfg.CONST.IMG_H, cfg.CONST.IMG_W
-        CROP_SIZE = cfg.CONST.CROP_IMG_H, cfg.CONST.CROP_IMG_W
-        
-        val_dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[cfg.DATASET.TEST_DATASET](
-            cfg)
+        const = self.cfg_data.constants
+        c_dt = self.cfg_data.transforms
+        c_dl = self.cfg_data.loader
 
-        
+        # Set up data augmentation
+        IMG_SIZE = const.img_h, const.img_w
+        CROP_SIZE = const.crop_img_h, const.crop_img_w
+
+        ds_config = self.cfg_data.dataset[c_dl.test_dataset]
+        val_dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[c_dl.test_dataset](ds_config)
+
         val_transforms = utils.data_transforms.Compose([
             utils.data_transforms.CenterCrop(IMG_SIZE, CROP_SIZE),
-            utils.data_transforms.RandomBackground(
-                cfg.TEST.RANDOM_BG_COLOR_RANGE),
-            utils.data_transforms.Normalize(
-                mean=cfg.DATASET.MEAN, std=cfg.DATASET.STD),
+            utils.data_transforms.RandomBackground(c_dt.test_rand_bg_color_range),
+            utils.data_transforms.Normalize(mean=c_dt.mean, std=c_dt.std),
             utils.data_transforms.ToTensor(),
         ])
         
         val_data_loader = torch.utils.data.DataLoader(dataset=val_dataset_loader.get_dataset(
-            utils.data_loaders.DatasetType.VAL, cfg.CONST.N_VIEWS_RENDERING, val_transforms),
+            utils.data_loaders.DatasetType.VAL, const.n_views_rendering, val_transforms),
             batch_size=1,
             num_workers=0,
             pin_memory=True,
@@ -94,24 +101,27 @@ class ShapeNetDataModule(pl.LightningDataModule):
         return val_data_loader
 
     def test_dataloader(self):
-        cfg = self.cfg
-        
+        const = self.cfg_data.constants
+        c_dt = self.cfg_data.transforms
+        c_dl = self.cfg_data.loader
+
         # Set up data augmentation
-        IMG_SIZE = cfg.CONST.IMG_H, cfg.CONST.IMG_W
-        CROP_SIZE = cfg.CONST.CROP_IMG_H, cfg.CONST.CROP_IMG_W
+        IMG_SIZE = const.img_h, const.img_w
+        CROP_SIZE = const.crop_img_h, const.crop_img_w
+
         test_transforms = utils.data_transforms.Compose([
             utils.data_transforms.CenterCrop(IMG_SIZE, CROP_SIZE),
             utils.data_transforms.RandomBackground(
-                cfg.TEST.RANDOM_BG_COLOR_RANGE),
+                c_dt.test_rand_bg_color_range),
             utils.data_transforms.Normalize(
-                mean=cfg.DATASET.MEAN, std=cfg.DATASET.STD),
+                mean=c_dt.mean, std=c_dt.std),
             utils.data_transforms.ToTensor(),
         ])
 
-        dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[cfg.DATASET.TEST_DATASET](
-            cfg)
+        ds_config = self.cfg_data.dataset[c_dl.test_dataset]
+        dataset_loader = utils.data_loaders.DATASET_LOADER_MAPPING[c_dl.test_dataset](ds_config)
         test_data_loader = torch.utils.data.DataLoader(dataset=dataset_loader.get_dataset(
-            utils.data_loaders.DatasetType.TEST, cfg.CONST.N_VIEWS_RENDERING, test_transforms),
+            utils.data_loaders.DatasetType.TEST, const.n_views_rendering, test_transforms),
             batch_size=1,
             num_workers=1,
             pin_memory=True,
@@ -119,7 +129,17 @@ class ShapeNetDataModule(pl.LightningDataModule):
         
         return test_data_loader
 
+    def get_test_taxonomy_file_path(self):
+        ds_name = self.cfg_data.loader.test_dataset
+        return self.cfg_data.dataset[ds_name].taxonomy_path
 
+    def get_n_views_rendering(self):
+        return self.cfg_data.constants.n_views_rendering
+
+    def update_n_views_rendering(self):
+        n_views_rendering = random.randint(1, self.get_n_views_rendering())
+        self.train_data_loader.dataset.set_n_views_rendering(n_views_rendering)
+        return n_views_rendering
 # //////////////////////////////// = End of DatasetType Class Definition = ///////////////////////////////// #
 
 
@@ -188,13 +208,13 @@ class ShapeNetDataset(torch.utils.data.dataset.Dataset):
 
 
 class ShapeNetDataLoader:
-    def __init__(self, cfg):
+    def __init__(self, cfg: DictConfig):
         self.dataset_taxonomy = None
-        self.rendering_image_path_template = cfg.DATASETS.SHAPENET.RENDERING_PATH
-        self.volume_path_template = cfg.DATASETS.SHAPENET.VOXEL_PATH
+        self.rendering_image_path_template = cfg.rendering_path
+        self.volume_path_template = cfg.voxel_path
 
         # Load all taxonomies of the dataset
-        with open(cfg.DATASETS.SHAPENET.TAXONOMY_FILE_PATH, encoding='utf-8') as file:
+        with open(cfg.taxonomy_path, encoding='utf-8') as file:
             self.dataset_taxonomy = json.loads(file.read())
 
     def get_dataset(self, dataset_type, n_views_rendering, transforms=None):
@@ -308,14 +328,14 @@ class Pascal3dDataset(torch.utils.data.dataset.Dataset):
 
 
 class Pascal3dDataLoader:
-    def __init__(self, cfg):
+    def __init__(self, cfg: DictConfig):
         self.dataset_taxonomy = None
-        self.volume_path_template = cfg.DATASETS.PASCAL3D.VOXEL_PATH
-        self.annotation_path_template = cfg.DATASETS.PASCAL3D.ANNOTATION_PATH
-        self.rendering_image_path_template = cfg.DATASETS.PASCAL3D.RENDERING_PATH
+        self.volume_path_template = cfg.voxel_path
+        self.annotation_path_template = cfg.annotation_path
+        self.rendering_image_path_template = cfg.rendering_path
 
         # Load all taxonomies of the dataset
-        with open(cfg.DATASETS.PASCAL3D.TAXONOMY_FILE_PATH, encoding='utf-8') as file:
+        with open(cfg.taxonomy_path, encoding='utf-8') as file:
             self.dataset_taxonomy = json.loads(file.read())
 
     def get_dataset(self, dataset_type, n_views_rendering, transforms=None):
@@ -444,19 +464,19 @@ class Pix3dDataset(torch.utils.data.dataset.Dataset):
 
 
 class Pix3dDataLoader:
-    def __init__(self, cfg):
+    def __init__(self, cfg: DictConfig):
         self.dataset_taxonomy = None
         self.annotations = dict()
-        self.volume_path_template = cfg.DATASETS.PIX3D.VOXEL_PATH
-        self.rendering_image_path_template = cfg.DATASETS.PIX3D.RENDERING_PATH
+        self.volume_path_template = cfg.voxel_path
+        self.rendering_image_path_template = cfg.rendering_path
 
         # Load all taxonomies of the dataset
-        with open(cfg.DATASETS.PIX3D.TAXONOMY_FILE_PATH, encoding='utf-8') as file:
+        with open(cfg.taxonomy_path, encoding='utf-8') as file:
             self.dataset_taxonomy = json.loads(file.read())
 
         # Load all annotations of the dataset
         _annotations = None
-        with open(cfg.DATASETS.PIX3D.ANNOTATION_PATH, encoding='utf-8') as file:
+        with open(cfg.annotation_path, encoding='utf-8') as file:
             _annotations = json.loads(file.read())
 
         for anno in _annotations:

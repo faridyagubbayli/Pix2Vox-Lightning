@@ -8,12 +8,12 @@
 import torch
 import torchvision.models
 import pytorch_lightning as pl
+from omegaconf import DictConfig
 
 
 class Encoder(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, cfg_tester: DictConfig):
         super(Encoder, self).__init__()
-        self.cfg = cfg
 
         # Layer Definition
         vgg16_bn = torchvision.models.vgg16_bn(pretrained=True)

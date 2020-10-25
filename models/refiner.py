@@ -4,30 +4,31 @@
 
 import torch
 import pytorch_lightning as pl
+from omegaconf import DictConfig
 
 
 class Refiner(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, cfg_network: DictConfig):
         super(Refiner, self).__init__()
-        self.cfg = cfg
+        self.cfg_network = cfg_network
 
         # Layer Definition
         self.layer1 = torch.nn.Sequential(
             torch.nn.Conv3d(1, 32, kernel_size=4, padding=2),
             torch.nn.BatchNorm3d(32),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE),
+            torch.nn.LeakyReLU(cfg_network.leaky_value),
             torch.nn.MaxPool3d(kernel_size=2)
         )
         self.layer2 = torch.nn.Sequential(
             torch.nn.Conv3d(32, 64, kernel_size=4, padding=2),
             torch.nn.BatchNorm3d(64),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE),
+            torch.nn.LeakyReLU(cfg_network.leaky_value),
             torch.nn.MaxPool3d(kernel_size=2)
         )
         self.layer3 = torch.nn.Sequential(
             torch.nn.Conv3d(64, 128, kernel_size=4, padding=2),
             torch.nn.BatchNorm3d(128),
-            torch.nn.LeakyReLU(cfg.NETWORK.LEAKY_VALUE),
+            torch.nn.LeakyReLU(cfg_network.leaky_value),
             torch.nn.MaxPool3d(kernel_size=2)
         )
         self.layer4 = torch.nn.Sequential(
@@ -39,22 +40,24 @@ class Refiner(pl.LightningModule):
             torch.nn.ReLU()
         )
         self.layer6 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(128, 64, kernel_size=4, stride=2, bias=cfg.NETWORK.TCONV_USE_BIAS, padding=1),
+            torch.nn.ConvTranspose3d(128, 64, kernel_size=4, stride=2, bias=cfg_network.tconv_use_bias, padding=1),
             torch.nn.BatchNorm3d(64),
             torch.nn.ReLU()
         )
         self.layer7 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(64, 32, kernel_size=4, stride=2, bias=cfg.NETWORK.TCONV_USE_BIAS, padding=1),
+            torch.nn.ConvTranspose3d(64, 32, kernel_size=4, stride=2, bias=cfg_network.tconv_use_bias, padding=1),
             torch.nn.BatchNorm3d(32),
             torch.nn.ReLU()
         )
         self.layer8 = torch.nn.Sequential(
-            torch.nn.ConvTranspose3d(32, 1, kernel_size=4, stride=2, bias=cfg.NETWORK.TCONV_USE_BIAS, padding=1),
+            torch.nn.ConvTranspose3d(32, 1, kernel_size=4, stride=2, bias=cfg_network.tconv_use_bias, padding=1),
             torch.nn.Sigmoid()
         )
 
     def forward(self, coarse_volumes):
-        volumes_32_l = coarse_volumes.view((-1, 1, self.cfg.CONST.N_VOX, self.cfg.CONST.N_VOX, self.cfg.CONST.N_VOX))
+        n_vox = self.cfg_network.n_vox
+
+        volumes_32_l = coarse_volumes.view((-1, 1, n_vox, n_vox, n_vox))
         # print(volumes_32_l.size())       # torch.Size([batch_size, 1, 32, 32, 32])
         volumes_16_l = self.layer1(volumes_32_l)
         # print(volumes_16_l.size())       # torch.Size([batch_size, 32, 16, 16, 16])
@@ -75,4 +78,4 @@ class Refiner(pl.LightningModule):
         volumes_32_r = (volumes_32_l + self.layer8(volumes_16_r)) * 0.5
         # print(volumes_32_r.size())       # torch.Size([batch_size, 1, 32, 32, 32])
 
-        return volumes_32_r.view((-1, self.cfg.CONST.N_VOX, self.cfg.CONST.N_VOX, self.cfg.CONST.N_VOX))
+        return volumes_32_r.view((-1, n_vox, n_vox, n_vox))

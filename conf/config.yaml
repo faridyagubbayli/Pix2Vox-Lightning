@@ -1,0 +1,73 @@
+is_test: False
+seed: -1
+
+data:
+  dataset:
+    ShapeNet:
+      taxonomy_path: ./datasets/ShapeNet.json
+      rendering_path: /mnt/Samsung_T5/thesis/ShapeNet/ShapeNetRendering/%s/%s/rendering/%02d.png
+      voxel_path: /mnt/Samsung_T5/thesis/ShapeNet/ShapeNetVox32/%s/%s/model.binvox
+    Pascal:
+      taxonomy_path: ./datasets/Pascal3D.json
+      annotation_path: /tf/home/hzxie/Datasets/PASCAL3D/Annotations/%s_imagenet/%s.mat
+      rendering_path: /tf/home/hzxie/Datasets/PASCAL3D/Images/%s_imagenet/%s.JPEG
+      voxel_path: /tf/home/hzxie/Datasets/PASCAL3D/CAD/%s/%02d.binvox
+    Pix3D:
+      taxonomy_path: ./datasets/Pix3D.json
+      annotation_path: /mnt/Samsung_T5/thesis/pix3d/pix3d.json
+      rendering_path: /mnt/Samsung_T5/thesis/pix3d/img/%s/%s.%s
+      voxel_path: /mnt/Samsung_T5/thesis/pix3d/model/%s/%s/%s.binvox
+
+  constants:
+    img_w: 224
+    img_h: 224
+    crop_img_w: 128
+    crop_img_h: 128
+    n_views_rendering: 1  # Dummy property for Pascal 3D
+
+  transforms:
+    mean: [0.5, 0.5, 0.5]
+    std: [0.5, 0.5, 0.5]
+    brightness: 0.4
+    contrast: 0.4
+    saturation: 0.4
+    noise_std: 0.4
+    train_rand_bg_color_range: [[225, 255], [225, 255], [225, 255]]
+    test_rand_bg_color_range: [[240, 240], [240, 240], [240, 240]]
+
+  loader:
+    train_dataset: ShapeNet
+    test_dataset: ShapeNet
+    batch_size: 16
+    num_workers: 0
+
+trainer:
+  max_epochs: 3
+  gpus: 1
+
+tester:
+  voxel_thresh: [.2, .3, .4, .5]
+
+network:
+  leaky_value: 0.2
+  tconv_use_bias: False
+  use_refiner: True
+  use_merger: True
+  update_n_views_rendering: False
+  n_vox: 32
+
+  optimization:
+    policy: 'adam'
+    epoch_start_use_refiner: 0
+    epoch_start_use_merger: 0
+    encoder_lr: 1e-3
+    decoder_lr: 1e-3
+    refiner_lr: 1e-3
+    merger_lr: 1e-4
+    encoder_lr_milestones: [150]
+    decoder_lr_milestones: [150]
+    refiner_lr_milestones: [150]
+    merger_lr_milestones: [150]
+    betas: [.9, .999]
+    momentum: .9
+    gamma: .5

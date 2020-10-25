@@ -50,10 +50,6 @@ def save_checkpoints(cfg, file_path, epoch_idx, encoder, encoder_solver, decoder
     torch.save(checkpoint, file_path)
 
 
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters())
-
-
 class AverageMeter(object):
     """Computes and stores the average and current value"""
     def __init__(self):
